@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:xml-module="http://www.mulesoft.org/schema/mule/xml-module"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/xml-module http://www.mulesoft.org/schema/mule/xml-module/current/mule-xml-module.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="2bb5e3d1-197e-46a7-8456-612c911e6694" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<wsc:config name="Web_Service_Consumer_Config" doc:name="Web Service Consumer Config" doc:id="ef224f35-df90-455c-992a-d8b0f5868b57" >
+		<wsc:connection wsdlLocation="http://3.249.81.123:8080/ws/ciudadanos.wsdl" service="CiudadanosPortService" port="CiudadanosPortSoap11" address="http://3.249.81.123:8080/ws/ciudadanos" >
+			<wsc:web-service-security actor="http://schemas.xmlsoap.org/soap/actor/next" />
+		</wsc:connection>
+	</wsc:config>
+	<wsc:config name="Web_Service_Consumer_Config1" doc:name="Web Service Consumer Config" doc:id="eb7e1c0d-3065-496a-88db-2e2a24bd0515" >
+		<wsc:connection wsdlLocation="http://3.249.81.123:8080/ws/direcciones.wsdl" service="DireccionesPortService" port="DireccionesPortSoap11" address="http://3.249.81.123:8080/ws/direcciones" />
+	</wsc:config>
+	<flow name="get_id_portalciudadanoFlow" doc:id="a2954f2a-43ad-409a-a2a5-bcc29a2f9f4d" >
+		<http:listener doc:name="Listener" doc:id="98c65388-105a-44ad-983b-823babda1e4c" config-ref="HTTP_Listener_config" path="/ciudadano/{id}" allowedMethods="GET">
+		</http:listener>
+		<wsc:consume doc:name="Ciudadano" doc:id="901a91e7-f985-45d6-95b5-b1c20784e6ff" config-ref="Web_Service_Consumer_Config" operation="getCiudadano">
+			<wsc:message>
+				<wsc:body><![CDATA[#[output application/xml
+ns ns0 http://cvaintegra.com/ciudadano
+---
+{
+	ns0#getCiudadanoRequest: {
+		ns0#id: attributes.uriParams.id as String
+	}
+}]]]></wsc:body>
+			</wsc:message>
+		</wsc:consume>
+		<xml-module:validate-schema doc:name="Validar Ciudadano" doc:id="c968d322-abdd-4e66-a5e1-2f822e42fc72" schemas="schemas\ciudadano.xsd">
+			<xml-module:content ><![CDATA[#[payload.body]]]></xml-module:content>
+		</xml-module:validate-schema>
+		<choice doc:name="Choice" doc:id="cb33ee49-ccce-4027-a73f-2b46efd978c2" >
+			<when expression="#[%dw 2.0&#10;ns ns0 http://cvaintegra.com/ciudadano&#10;---&#10;payload.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#nombre != null]">
+				<set-variable value="#[payload]" doc:name="Datos Ciudadano" doc:id="f52e22ff-2d97-4c7c-bbf3-85f628ef447d" variableName="Datos" />
+				<wsc:consume doc:name="Direccion" doc:id="6c5f9f64-5e55-436c-8be2-acf114f161c7" config-ref="Web_Service_Consumer_Config1" operation="getDireccion">
+			<wsc:message>
+				<wsc:body><![CDATA[#[output application/xml
+ns ns0 http://cvaintegra.com/direccion
+ns ns01 http://cvaintegra.com/ciudadano
+---  
+  
+{
+	ns0#getDireccionRequest: {
+		ns0#id: (payload.body.ns01#getCiudadanoResponse.ns01#ciudadano.ns01#direccion default "") }
+}]]]></wsc:body>
+			</wsc:message>
+		</wsc:consume>
+				<xml-module:validate-schema doc:name="Validar Direccion" doc:id="2ec4248e-5fe5-4734-b6a6-9d4100f01508" schemas="schemas\direccion.xsd">
+					<xml-module:content ><![CDATA[#[payload.body]]]></xml-module:content>
+				</xml-module:validate-schema>
+				<ee:transform doc:name="SOAP to JSON" doc:id="bf750d56-e1f0-4959-85d0-f0df3f19fc6b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0ns ns0 http://cvaintegra.com/ciudadano
+ns ns1 http://cvaintegra.com/direccion
+
+output application/json
+---
+{        '1ernombre': ((vars.Datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#nombre default "") splitBy(' '))[0],        '2donombre': ((vars.Datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#nombre default "") splitBy(' '))[1],        '1erapellido': ((vars.Datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#apellidos default "") splitBy(' '))[0],        '2doapellido': ((vars.Datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#apellidos default "") splitBy(' '))[1],        'pais': vars.Datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#pais,        'prov': vars.Datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#provincia,        'mun': vars.Datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#municipio,        'direccion': {          'calle': payload.body.ns1#getDireccionResponse.ns1#direccion.ns1#calle,          'entrecalles':(payload.body.ns1#getDireccionResponse.ns1#direccion.ns1#entreCalle1) ++ (" y ") ++ (payload.body.ns1#getDireccionResponse.ns1#direccion.ns1#entreCalle2),          'apto': payload.body.ns1#getDireccionResponse.ns1#direccion.ns1#apto,          'num': payload.body.ns1#getDireccionResponse.ns1#direccion.ns1#numero        }
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+				<json:validate-schema doc:name="JSON Ciudadano" doc:id="01470f32-1923-4387-83f1-18d25ee44d09" schema="ciudadanos.json" >
+				</json:validate-schema>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="c7e46eec-8d98-427f-a268-d847c668963c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"response":"Sin Datos"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<error-handler>
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="f44bf270-2c47-439c-91fa-2fefac66b747" type="JSON:SCHEMA_NOT_HONOURED">
+				<ee:transform doc:name="Transform Message" doc:id="fdb14ca3-e9c0-422a-b48f-6148eaa6e645">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	errorDetails: using (errorMsg = error.errorMessage.payload[0]){
+		errorMessage:errorMsg.message
+	}
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+</mule>
